@@ -1,3 +1,4 @@
+package wchar
 
 /*
 #cgo darwin LDFLAGS: -liconv
