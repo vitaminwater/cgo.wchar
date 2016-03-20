@@ -9,6 +9,11 @@ package wchar
 #endif
 #include <iconv.h>
 #include <wchar.h>
+#include <string.h>
+
+void putWcharAt(char *buffer, void *wchar, int at) {
+	memcpy(buffer+at, wchar, 4);
+}
 */
 import "C"
 
@@ -109,51 +114,37 @@ func convertWcharStringToGoString(ws WcharString) (output string, err error) {
 	}
 	defer C.iconv_close(iconv)
 
-	inputAsCChars := make([]C.char, 0, len(ws)*4)
-	wcharAsBytes := make([]byte, 4)
-	for _, nextWchar := range ws {
+	inputCLength := C.size_t(len(ws) * 4)
+	inputAsCChars := (*C.char)(C.malloc(inputCLength))
+	C.memset(inputAsCChars, C.int(0), inputCLength)
+	defer C.free(inputAsCChars)
+	for i, nextWchar := range ws {
 		// find null terminator
 		if nextWchar == 0 {
-			// Return empty string if there are no chars in buffer
-			//++ FIXME: this should NEVER be the case because input is checked at the begin of this function.
-			if len(inputAsCChars) == 0 {
-				return "", nil
-			}
 			break
 		}
 
-		// split Wchar into bytes
-		binary.LittleEndian.PutUint32(wcharAsBytes, uint32(nextWchar))
-
-		// append the bytes as C.char to inputAsCChars
-		for i := 0; i < 4; i++ {
-			inputAsCChars = append(inputAsCChars, C.char(wcharAsBytes[i]))
-		}
+		C.putWcharAt(inputAsCChars, unsafe.Pointer(&nextWchar), C.int(i*4))
 	}
 
-	// input for C
-	inputAsCCharsPtr := &inputAsCChars[0]
-
 	// calculate buffer size for input
-	bytesLeftInCSize := C.size_t(len(inputAsCChars))
+	bytesLeftInCSize := inputCLength
 
 	// calculate buffer size for output
-	bytesLeftOutCSize := C.size_t(len(inputAsCChars))
+	bytesLeftOutCSize := inputCLength
 
 	// create output buffer
-	outputChars := make([]C.char, bytesLeftOutCSize)
-
-	// output buffer pointer for C
-	outputCharsPtr := &outputChars[0]
+	outputChars := (*C.char)(C.malloc(bytesLeftOutCSize))
+	defer C.free(outputChars)
 
 	// call iconv for conversion of charsets, return on error
-	_, errno = C.iconv(iconv, &inputAsCCharsPtr, &bytesLeftInCSize, &outputCharsPtr, &bytesLeftOutCSize)
+	_, errno = C.iconv(iconv, &inputAsCChars, &bytesLeftInCSize, &outputChars, &bytesLeftOutCSize)
 	if errno != nil {
 		return "", errno
 	}
 
 	// conver output buffer to go string
-	output = C.GoString((*C.char)(&outputChars[0]))
+	output = C.GoString(outputChars)
 
 	return output, nil
 }
