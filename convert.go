@@ -20,7 +20,6 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"unsafe"
 )
 
@@ -65,13 +64,16 @@ func convertGoStringToWcharString(input string) (output WcharString, err error) 
 	defer C.free(unsafe.Pointer(outputCString))
 
 	// call iconv for conversion of charsets, return on error
-	_, errno = C.iconv(iconv, &inputCString, &bytesLeftInCSize, &outputCString, &bytesLeftOutCSize)
+	saveInputCString, saveOutputCString := inputCString, outputCString
+	n, errno := C.iconv(iconv, &inputCString, &bytesLeftInCSize, &outputCString, &bytesLeftOutCSize)
 	if errno != nil {
-		log.Println("pouet")
 		return nil, errno
 	}
-	outputChars := make([]int8, len(input)*4)
-	C.memcpy(&outputChars[0], outputCString, C.size_t(len(input)*4))
+	inputCString, outputCString = saveInputCString, saveOutputCString
+
+	outputLen := len(input)*4 - int(bytesLeftOutCSize)
+	outputChars := make([]int8, outputLen)
+	C.memcpy(unsafe.Pointer(&outputChars[0]), unsafe.Pointer(outputCString), C.size_t(outputLen))
 
 	// convert []int8 to WcharString
 	// create WcharString with same length as input, and one extra position for the null terminator.
@@ -140,10 +142,12 @@ func convertWcharStringToGoString(ws WcharString) (output string, err error) {
 	defer C.free(unsafe.Pointer(outputChars))
 
 	// call iconv for conversion of charsets, return on error
+	saveInputAsCChars, saveOutputChars := inputAsCChars, outputChars
 	_, errno = C.iconv(iconv, &inputAsCChars, &bytesLeftInCSize, &outputChars, &bytesLeftOutCSize)
 	if errno != nil {
 		return "", errno
 	}
+	inputAsCChars, outputChars = saveInputAsCChars, saveOutputChars
 
 	// conver output buffer to go string
 	output = C.GoString(outputChars)
@@ -183,10 +187,12 @@ func convertGoRuneToWchar(r rune) (output Wchar, err error) {
 	defer C.free(unsafe.Pointer(outputChars))
 
 	// call iconv for conversion of charsets
+	saveRuneCString, saveOutputChars := runeCString, outputChars
 	_, errno = C.iconv(iconv, &runeCString, &bytesLeftInCSize, &outputChars, &bytesLeftOutCSize)
 	if errno != nil {
 		return '\000', errno
 	}
+	runeCString, outputChars = saveRuneCString, saveOutputChars
 
 	// convert C.char's to Wchar
 	wcharAsByteAry := make([]byte, 4)
@@ -218,8 +224,8 @@ func convertWcharToGoRune(w Wchar) (output rune, err error) {
 	binary.LittleEndian.PutUint32(wcharAsBytes, uint32(w))
 
 	// place the wcharAsBytes into wcharAsCChars
-	// TODO: use unsafe.Pointer here to do the conversion?
 	wcharAsCChars := (*C.char)(C.malloc(4))
+	defer C.free(unsafe.Pointer(wcharAsCChars))
 	C.memcpy(unsafe.Pointer(wcharAsCChars), unsafe.Pointer(&wcharAsBytes[0]), 4)
 
 	// calculate buffer size for input
@@ -229,13 +235,16 @@ func convertWcharToGoRune(w Wchar) (output rune, err error) {
 	bytesLeftOutCSize := C.size_t(4)
 
 	// create output buffer
-	outputChars := (*C.char)(C.malloc(4))
+	outputChars := (*C.char)(C.malloc(bytesLeftOutCSize))
+	defer C.free(unsafe.Pointer(outputChars))
 
 	// call iconv for conversion of charsets
+	saveWcharAsCChars, saveOutputChars := wcharAsCChars, outputChars
 	_, errno = C.iconv(iconv, &wcharAsCChars, &bytesLeftInCSize, &outputChars, &bytesLeftOutCSize)
 	if errno != nil {
 		return '\000', errno
 	}
+	wcharAsCChars, outputChars = saveWcharAsCChars, saveOutputChars
 
 	// convert outputChars ([]int8, len 4) to Wchar
 	// TODO: can this conversion be done easier by using this: ?
