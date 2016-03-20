@@ -65,7 +65,7 @@ func convertGoStringToWcharString(input string) (output WcharString, err error) 
 
 	// call iconv for conversion of charsets, return on error
 	saveInputCString, saveOutputCString := inputCString, outputCString
-	_, errno := C.iconv(iconv, &inputCString, &bytesLeftInCSize, &outputCString, &bytesLeftOutCSize)
+	_, errno = C.iconv(iconv, &inputCString, &bytesLeftInCSize, &outputCString, &bytesLeftOutCSize)
 	if errno != nil {
 		return nil, errno
 	}
