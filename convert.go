@@ -140,6 +140,7 @@ func convertWcharStringToGoString(ws WcharString) (output string, err error) {
 	// create output buffer
 	outputChars := (*C.char)(C.malloc(bytesLeftOutCSize))
 	defer C.free(unsafe.Pointer(outputChars))
+	C.memset(unsafe.Pointer(outputChars), C.int(0), bytesLeftOutCSize)
 
 	// call iconv for conversion of charsets, return on error
 	saveInputAsCChars, saveOutputChars := inputAsCChars, outputChars
